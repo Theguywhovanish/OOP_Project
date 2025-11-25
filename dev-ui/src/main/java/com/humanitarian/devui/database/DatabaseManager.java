@@ -85,6 +85,28 @@ public class DatabaseManager {
         return false;
     }
 
+    public void deleteComment(String commentId) throws SQLException {
+        String sql = "DELETE FROM comments WHERE comment_id = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, commentId);
+            pstmt.executeUpdate();
+            commit();
+        }
+    }
+
+    public void updateComment(Comment comment) throws SQLException {
+        String sql = "UPDATE comments SET content = ?, sentiment = ?, confidence = ?, relief_category = ? WHERE comment_id = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, comment.getContent());
+            pstmt.setString(2, comment.getSentiment() != null ? comment.getSentiment().getType().toString() : null);
+            pstmt.setDouble(3, comment.getSentiment() != null ? comment.getSentiment().getConfidence() : 0);
+            pstmt.setString(4, comment.getReliefItem() != null ? comment.getReliefItem().getCategory().name() : null);
+            pstmt.setString(5, comment.getCommentId());
+            pstmt.executeUpdate();
+            commit();
+        }
+    }
+
     public void commit() throws SQLException {
         if (connection != null && !connection.getAutoCommit()) {
             connection.commit();
@@ -186,6 +208,14 @@ public class DatabaseManager {
         post.setDisasterKeyword(rs.getString("disaster_keyword"));
 
         return post;
+    }
+
+    public void clearAllComments() throws SQLException {
+        String sql = "DELETE FROM comments";
+        try (Statement stmt = connection.createStatement()) {
+            stmt.executeUpdate(sql);
+            commit();
+        }
     }
 
     public void close() throws SQLException {
