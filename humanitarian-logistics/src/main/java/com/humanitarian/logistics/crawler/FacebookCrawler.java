@@ -914,10 +914,25 @@ public class FacebookCrawler implements DataCrawler {
      */
     private void extractCommentsFromDetailPage(FacebookPost post) {
         try {
-            System.out.println("    📝 Extracting comments using mbasic.facebook.com method...");
+            System.out.println("    📝 Extracting comments from post detail page...");
             
-            // Convert regular Facebook URL to mbasic URL
+            // First: Scroll down on current page to load comments
             String postUrl = driver.getCurrentUrl();
+            System.out.println("      Current URL: " + postUrl);
+            
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            int scrollCount = 0;
+            int maxScrolls = 5; // Scroll to load comments
+            
+            System.out.println("      🔄 Scrolling down to load comments...");
+            while (scrollCount < maxScrolls) {
+                js.executeScript("window.scrollBy(0, 600);");
+                Thread.sleep(1500);  // Wait for comments to load
+                scrollCount++;
+            }
+            System.out.println("      ✓ Scrolled " + scrollCount + " times");
+            
+            // Second: Extract post ID and navigate to mbasic version
             String postId = extractPostIdFromUrl(postUrl);
             
             if (postId == null || postId.isEmpty()) {
@@ -925,11 +940,18 @@ public class FacebookCrawler implements DataCrawler {
                 return;
             }
             
-            // Navigate to mbasic version
+            // Navigate to mbasic version for better comment parsing
             String mbasicUrl = "https://mbasic.facebook.com/" + postId;
-            System.out.println("      🔗 Navigating to: " + mbasicUrl);
+            System.out.println("      🔗 Navigating to mbasic: " + mbasicUrl);
             driver.get(mbasicUrl);
             Thread.sleep(3000);
+            
+            // Scroll down on mbasic page to load comments there too
+            System.out.println("      🔄 Scrolling on mbasic page...");
+            for (int i = 0; i < 3; i++) {
+                js.executeScript("window.scrollBy(0, 600);");
+                Thread.sleep(1200);
+            }
             
             // Extract comments using mbasic structure
             int commentCount = 0;
