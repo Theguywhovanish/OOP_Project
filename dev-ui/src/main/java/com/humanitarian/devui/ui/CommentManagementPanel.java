@@ -461,12 +461,12 @@ public class CommentManagementPanel extends JPanel {
     private void clearAllComments() {
         int total = (int) tableModel.getRowCount();
         if (total == 0) {
-            JOptionPane.showMessageDialog(this, "No comments to delete", "Info", JOptionPane.INFORMATION_MESSAGE);
+            JOptionPane.showMessageDialog(this, "No data to clear", "Info", JOptionPane.INFORMATION_MESSAGE);
             return;
         }
 
         int confirm = JOptionPane.showConfirmDialog(this,
-            "Delete ALL " + total + " comments from database?\nThis action cannot be undone!",
+            "Clear ALL data and reset database?\nThis will delete humanitarian_logistics_curated.db and create a new empty one.\nThis action cannot be undone!",
             "Confirm Clear All",
             JOptionPane.YES_NO_OPTION,
             JOptionPane.WARNING_MESSAGE);
@@ -475,24 +475,44 @@ public class CommentManagementPanel extends JPanel {
             try {
                 // Clear from buffer
                 buffer.getPendingComments().clear();
+                buffer.getPendingPosts().clear();
                 
                 // Clear from all posts
                 for (Post post : model.getPosts()) {
                     post.getComments().clear();
                 }
+                model.getPosts().clear();
                 
-                // Clear from database
+                // Close database connection first
                 if (dbManager != null) {
-                    dbManager.clearAllComments();
+                    try {
+                        dbManager.close();
+                    } catch (Exception e) {
+                        System.err.println("Error closing DB: " + e.getMessage());
+                    }
                 }
+                
+                // Delete database file
+                String dbFilePath = "humanitarian_logistics_curated.db";
+                java.io.File dbFile = new java.io.File(dbFilePath);
+                if (dbFile.exists()) {
+                    boolean deleted = dbFile.delete();
+                    System.out.println("Database file " + (deleted ? "deleted" : "failed to delete"));
+                }
+                
+                // Reinitialize DatabaseManager (creates new empty DB)
+                dbManager = new com.humanitarian.devui.database.DatabaseManager();
+                System.out.println("New empty database created");
                 
                 refreshTable();
                 detailsArea.setText("");
                 updateStatsPanel();
-                statusLabel.setText("✓ All comments cleared from database");
-                JOptionPane.showMessageDialog(this, "All " + total + " comments deleted successfully", "Success", JOptionPane.INFORMATION_MESSAGE);
+                statusLabel.setText("✓ Database reset - all data cleared");
+                JOptionPane.showMessageDialog(this, "✓ Database reset successfully!\nNew empty database created.", "Success", JOptionPane.INFORMATION_MESSAGE);
             } catch (Exception e) {
-                JOptionPane.showMessageDialog(this, "Error clearing comments: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(this, "Error resetting database: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                System.err.println("Error during reset: " + e.getMessage());
+                e.printStackTrace();
             }
         }
     }
