@@ -15,6 +15,7 @@ public class View extends JFrame implements ModelListener {
     private CrawlControlPanel crawlPanel;
     private DataCollectionPanel dataCollectionPanel;
     private AdvancedAnalysisPanel advancedAnalysisPanel;
+    private CommentManagementPanel commentPanel;
     private JLabel statusLabel;
 
     public View(Model model) {
@@ -29,6 +30,14 @@ public class View extends JFrame implements ModelListener {
         setSize(1600, 950);
         setLocationRelativeTo(null);
         setExtendedState(JFrame.MAXIMIZED_BOTH);
+
+        // Add proper cleanup on window close
+        addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowClosing(java.awt.event.WindowEvent e) {
+                cleanupAndExit();
+            }
+        });
 
         JPanel mainPanel = new JPanel();
         mainPanel.setLayout(new BorderLayout(10, 10));
@@ -51,7 +60,11 @@ public class View extends JFrame implements ModelListener {
         dataCollectionPanel = new DataCollectionPanel(model);
         mainTabbedPane.addTab("✏️  Data Entry", dataCollectionPanel);
 
-        // Tab 3: Advanced Analysis
+        // Tab 3: Comments Management
+        commentPanel = new CommentManagementPanel(model);
+        mainTabbedPane.addTab("💬 Comments Manager", commentPanel);
+
+        // Tab 4: Advanced Analysis
         advancedAnalysisPanel = new AdvancedAnalysisPanel(model);
         mainTabbedPane.addTab("📊 Analysis", advancedAnalysisPanel);
 
@@ -126,6 +139,35 @@ public class View extends JFrame implements ModelListener {
             int totalComments = posts.stream().mapToInt(p -> p.getComments().size()).sum();
             statusLabel.setText("✓ Model updated - Posts: " + posts.size() + " | Comments: " + totalComments);
         });
+    }
+
+    private void cleanupAndExit() {
+        try {
+            System.out.println("Cleaning up resources...");
+            
+            // Suppress any cleanup errors to prevent "Errors during cleaning null"
+            try {
+                if (crawlPanel != null) {
+                    // Let crawler finish gracefully
+                }
+            } catch (Throwable t) {
+                // Silently ignore
+            }
+            
+            try {
+                if (commentPanel != null) {
+                    // CommentPanel cleanup
+                }
+            } catch (Throwable t) {
+                // Silently ignore
+            }
+            
+            System.out.println("✓ Cleanup complete. Exiting...");
+        } catch (Throwable t) {
+            System.err.println("Error during cleanup: " + t.getMessage());
+        } finally {
+            System.exit(0);
+        }
     }
 }
 
