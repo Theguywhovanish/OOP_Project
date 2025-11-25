@@ -914,149 +914,200 @@ public class FacebookCrawler implements DataCrawler {
      */
     private void extractCommentsFromDetailPage(FacebookPost post) {
         try {
-            System.out.println("    📝 Extracting comments from post detail page...");
-            System.out.println("      Current URL: " + driver.getCurrentUrl());
-
-            // Scroll xuống để load comments
-            JavascriptExecutor js = (JavascriptExecutor) driver;
-            int scrollCount = 0;
-            int maxScrolls = 8; // Scroll tối đa 8 lần để load comments
-
-            System.out.println("      🔄 Scrolling down to load comments...");
-            while (scrollCount < maxScrolls) {
-                js.executeScript("window.scrollBy(0, 600);");
-                Thread.sleep(1200);  // Chờ comment load
-                scrollCount++;
-            }
-            System.out.println("      ✓ Scrolled " + scrollCount + " times");
-
-            // Tìm comments - thường nằm trong div[data-testid='comment'] hoặc role='article'
-            System.out.println("      🔍 Looking for comment elements...");
+            System.out.println("    📝 Extracting comments using mbasic.facebook.com method...");
             
-            List<WebElement> commentElements = new ArrayList<>();
+            // Convert regular Facebook URL to mbasic URL
+            String postUrl = driver.getCurrentUrl();
+            String postId = extractPostIdFromUrl(postUrl);
             
-            // Strategy 1: Tìm comment elements trực tiếp
-            try {
-                List<WebElement> strategy1 = driver.findElements(By.xpath(
-                    "//div[@data-testid='comment']"
-                ));
-                if (!strategy1.isEmpty()) {
-                    System.out.println("      ✓ Found " + strategy1.size() + " comments (data-testid='comment')");
-                    commentElements.addAll(strategy1);
-                }
-            } catch (Exception e) {
-                System.out.println("      ⚠️ Strategy 1 (data-testid='comment'): " + e.getMessage());
-            }
-
-            // Strategy 2: Tìm các article elements chứa comments
-            if (commentElements.isEmpty()) {
-                try {
-                    List<WebElement> strategy2 = driver.findElements(By.xpath(
-                        "//div[contains(@class, 'comment')]"
-                    ));
-                    if (!strategy2.isEmpty()) {
-                        System.out.println("      ✓ Found " + strategy2.size() + " comments (class='comment')");
-                        commentElements.addAll(strategy2);
-                    }
-                } catch (Exception e) {
-                    System.out.println("      ⚠️ Strategy 2 (class='comment'): " + e.getMessage());
-                }
-            }
-
-            // Strategy 3: Tìm divs chứa text spans (có dir='auto')
-            if (commentElements.isEmpty()) {
-                try {
-                    List<WebElement> strategy3 = driver.findElements(By.xpath(
-                        "//div[contains(@role, 'article') and .//span[@dir='auto']]"
-                    ));
-                    if (!strategy3.isEmpty()) {
-                        System.out.println("      ✓ Found " + strategy3.size() + " elements with role='article'");
-                        commentElements.addAll(strategy3);
-                    }
-                } catch (Exception e) {
-                    System.out.println("      ⚠️ Strategy 3 (role='article'): " + e.getMessage());
-                }
-            }
-
-            if (commentElements.isEmpty()) {
-                System.out.println("      ⚠️ No comment elements found");
+            if (postId == null || postId.isEmpty()) {
+                System.out.println("      ⚠️ Could not extract post ID from URL: " + postUrl);
                 return;
             }
-
-            // Extract comments
+            
+            // Navigate to mbasic version
+            String mbasicUrl = "https://mbasic.facebook.com/" + postId;
+            System.out.println("      🔗 Navigating to: " + mbasicUrl);
+            driver.get(mbasicUrl);
+            Thread.sleep(3000);
+            
+            // Extract comments using mbasic structure
             int commentCount = 0;
-            for (WebElement commentElement : commentElements) {
-                if (commentCount >= 20) break;  // Limit 20 comments per post
-
+            boolean hasMoreComments = true;
+            
+            while (hasMoreComments && commentCount < 20) {
                 try {
-                    // Lấy text của comment
-                    String commentText = null;
-                    List<WebElement> textSpans = commentElement.findElements(By.xpath(
-                        ".//span[@dir='auto']"
+                    // Find comment reply links
+                    List<WebElement> commentLinks = driver.findElements(By.xpath(
+                        "//a[contains(@href, \"comment/replies\")]"
                     ));
                     
-                    if (!textSpans.isEmpty()) {
-                        commentText = textSpans.get(0).getText();
-                    } else {
-                        commentText = commentElement.getText();
-                    }
-
-                    if (commentText == null || commentText.trim().isEmpty() || commentText.length() < 3) {
-                        continue;
-                    }
-
-                    // Lấy tên người bình luận
-                    String commenterName = "Anonymous";
-                    try {
-                        // First try: Find strong element with name (most common structure)
-                        List<WebElement> nameElements = commentElement.findElements(By.xpath(
-                            ".//strong[1]"
-                        ));
+                    System.out.println("      ✓ Found " + commentLinks.size() + " comment reply links");
+                    
+                    for (WebElement commentLink : commentLinks) {
+                        if (commentCount >= 20) break;
                         
-                        if (!nameElements.isEmpty() && !nameElements.get(0).getText().trim().isEmpty()) {
-                            commenterName = nameElements.get(0).getText().trim();
-                        } else {
-                            // Fallback: Try to find link that contains the name
-                            List<WebElement> linkNames = commentElement.findElements(By.xpath(
-                                ".//a[@role='link'][1]"
-                            ));
-                            if (!linkNames.isEmpty()) {
-                                String linkText = linkNames.get(0).getText().trim();
-                                if (!linkText.isEmpty() && linkText.length() < 100) {
-                                    commenterName = linkText;
+                        try {
+                            // Get comment ID from ctoken parameter
+                            String href = commentLink.getAttribute("href");
+                            String ctoken = extractCtoken(href);
+                            
+                            if (ctoken == null || ctoken.isEmpty()) continue;
+                            
+                            // Extract comment element by ID
+                            String commentId = ctoken.split("_")[1];
+                            String xpathId = "//*[@id=\"" + commentId + "\"]";
+                            
+                            List<WebElement> commentElements = driver.findElements(By.xpath(xpathId));
+                            
+                            for (WebElement commentElement : commentElements) {
+                                try {
+                                    String elementText = commentElement.getText().trim();
+                                    if (elementText.isEmpty() || elementText.length() < 3) continue;
+                                    
+                                    // Parse comment: author, content, timestamp
+                                    String[] parts = parseCommentText(elementText, post.getCreatedAt());
+                                    String author = parts[0];
+                                    String content = parts[1];
+                                    LocalDateTime timestamp = LocalDateTime.parse(parts[2]);
+                                    
+                                    if (content == null || content.length() < 3) continue;
+                                    
+                                    // Create comment
+                                    Comment comment = new Comment(
+                                        "CMT_" + post.getPostId() + "_" + commentCount,
+                                        post.getPostId(),
+                                        content,
+                                        timestamp,
+                                        author
+                                    );
+                                    
+                                    post.addComment(comment);
+                                    commentCount++;
+                                    
+                                    System.out.println("      ✓ Comment #" + commentCount + " from: " + 
+                                        author.substring(0, Math.min(25, author.length())));
+                                    
+                                } catch (Exception e) {
+                                    System.out.println("      ⚠️ Error processing comment element: " + e.getMessage());
                                 }
                             }
+                        } catch (Exception e) {
+                            System.out.println("      ⚠️ Error extracting comment link: " + e.getMessage());
                         }
-                    } catch (Exception ignored) {
-                        System.out.println("      ⚠️ Could not extract commenter name");
                     }
-
-                    // Tạo Comment object
-                    Comment comment = new Comment(
-                            "CMT_" + post.getPostId() + "_" + commentCount,
-                            post.getPostId(),
-                            commentText.trim(),
-                            LocalDateTime.now(),
-                            commenterName
-                    );
-
-                    post.addComment(comment);
-                    commentCount++;
-
-                    System.out.println("      ✓ Comment #" + commentCount + " from: " + 
-                        commenterName.substring(0, Math.min(25, commenterName.length())));
-
+                    
+                    // Look for "next" button to load more comments
+                    try {
+                        List<WebElement> nextBtns = driver.findElements(By.xpath(
+                            "//*[contains(@id,\"see_next\")]/a"
+                        ));
+                        
+                        if (!nextBtns.isEmpty()) {
+                            System.out.println("      🔄 Found next button, loading more comments...");
+                            nextBtns.get(0).click();
+                            Thread.sleep(2000);
+                        } else {
+                            hasMoreComments = false;
+                        }
+                    } catch (Exception e) {
+                        hasMoreComments = false;
+                    }
+                    
                 } catch (Exception e) {
-                    System.out.println("      ⚠️ Error processing comment: " + e.getMessage());
-                    continue;
+                    System.out.println("      ⚠️ Error in comment extraction loop: " + e.getMessage());
+                    hasMoreComments = false;
                 }
             }
-
-            System.out.println("      ✅ Extracted " + commentCount + " comments total");
-
+            
+            System.out.println("      ✅ Extracted " + commentCount + " comments");
+            
         } catch (Exception e) {
             System.err.println("      ❌ Error extracting comments: " + e.getMessage());
         }
+    }
+    
+    private String extractPostIdFromUrl(String url) {
+        try {
+            // Handle different Facebook URL formats
+            // https://www.facebook.com/username/posts/123456
+            // https://www.facebook.com/photo.php?fbid=123456
+            // https://www.facebook.com/photo/?fbid=123456
+            
+            if (url.contains("fbid=")) {
+                return url.split("fbid=")[1].split("[&?]")[0];
+            } else if (url.contains("/posts/")) {
+                return url.split("/posts/")[1].split("[?/]")[0];
+            } else if (url.contains("/permalink.php?story_fbid=")) {
+                return url.split("story_fbid=")[1].split("[&]")[0];
+            }
+        } catch (Exception e) {
+            System.out.println("      ⚠️ Error extracting post ID: " + e.getMessage());
+        }
+        return null;
+    }
+    
+    private String extractCtoken(String href) {
+        try {
+            if (href.contains("ctoken=")) {
+                return href.split("ctoken=")[1].split("&")[0];
+            }
+        } catch (Exception e) {
+            // Silent fail
+        }
+        return null;
+    }
+    
+    private String[] parseCommentText(String elementText, LocalDateTime referenceTime) {
+        // Format: Author name ... content ... timestamp (e.g., "2m")
+        // Returns [author, content, timestamp]
+        
+        String author = "Anonymous";
+        String content = elementText;
+        LocalDateTime timestamp = LocalDateTime.now();
+        
+        try {
+            String[] lines = elementText.split("\n");
+            
+            if (lines.length >= 2) {
+                // First line usually has author and timestamp
+                String firstLine = lines[0];
+                
+                // Extract author (before "·" or similar separators)
+                if (firstLine.contains("·")) {
+                    author = firstLine.split("·")[0].trim();
+                } else if (firstLine.contains("ago")) {
+                    author = firstLine.replaceAll("\\d+[smhd]\\s*ago", "").trim();
+                } else {
+                    author = firstLine.split("\\s{2,}")[0].trim();
+                }
+                
+                // Extract timestamp from first line
+                String timePattern = "\\d+[smhd]|\\d+\\s*(phút|giờ|ngày|tuần|năm|minute|hour|day|week|year)";
+                java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(timePattern);
+                java.util.regex.Matcher matcher = pattern.matcher(firstLine);
+                
+                if (matcher.find()) {
+                    String timeStr = matcher.group();
+                    timestamp = parseRelativeTime(timeStr, referenceTime);
+                }
+                
+                // Content is remaining lines (skip first line which has metadata)
+                if (lines.length > 1) {
+                    StringBuilder sb = new StringBuilder();
+                    for (int i = 1; i < lines.length; i++) {
+                        if (!lines[i].trim().isEmpty()) {
+                            sb.append(lines[i].trim()).append(" ");
+                        }
+                    }
+                    content = sb.toString().trim();
+                }
+            }
+        } catch (Exception e) {
+            // Use defaults
+        }
+        
+        return new String[]{author, content, timestamp.toString()};
     }
 
 
@@ -1336,6 +1387,57 @@ public class FacebookCrawler implements DataCrawler {
                 driver = null;
                 initialized = false;
             }
+        }
+    }
+
+    private LocalDateTime parseRelativeTime(String timeText, LocalDateTime referenceTime) {
+        if (timeText == null || timeText.isEmpty()) {
+            return referenceTime;
+        }
+
+        try {
+            timeText = timeText.trim().toLowerCase();
+            LocalDateTime now = LocalDateTime.now();
+            
+            // Extract number from text
+            int amount = 1;
+            String[] parts = timeText.split("\\s+");
+            if (parts.length > 0) {
+                try {
+                    amount = Integer.parseInt(parts[0]);
+                } catch (NumberFormatException e) {
+                    // Extract first number from text
+                    String numStr = parts[0].replaceAll("[^0-9]", "");
+                    if (!numStr.isEmpty()) {
+                        amount = Integer.parseInt(numStr);
+                    }
+                }
+            }
+
+            // Parse time unit
+            if (timeText.contains("second") || timeText.contains("s")) {
+                return now.minusSeconds(amount);
+            } else if (timeText.contains("minute") || timeText.contains("m")) {
+                return now.minusMinutes(amount);
+            } else if (timeText.contains("hour") || timeText.contains("h") || timeText.contains("giờ")) {
+                return now.minusHours(amount);
+            } else if (timeText.contains("day") || timeText.contains("d") || timeText.contains("ngày")) {
+                return now.minusDays(amount);
+            } else if (timeText.contains("week") || timeText.contains("w") || timeText.contains("tuần")) {
+                return now.minusWeeks(amount);
+            } else if (timeText.contains("month") || timeText.contains("mon") || timeText.contains("tháng")) {
+                return now.minusMonths(amount);
+            } else if (timeText.contains("year") || timeText.contains("y") || timeText.contains("năm")) {
+                return now.minusYears(amount);
+            } else if (timeText.contains("phút")) {
+                return now.minusMinutes(amount);
+            }
+            
+            // Default: return reference time if cannot parse
+            return referenceTime;
+        } catch (Exception e) {
+            System.out.println("      ⚠️ Error parsing relative time '" + timeText + "': " + e.getMessage());
+            return referenceTime;
         }
     }
 }
