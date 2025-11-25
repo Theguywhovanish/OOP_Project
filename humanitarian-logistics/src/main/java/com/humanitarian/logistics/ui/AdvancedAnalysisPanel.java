@@ -71,6 +71,12 @@ public class AdvancedAnalysisPanel extends JPanel {
         }
         selectorPanel.add(categorySelector);
         
+        // Chart type selector
+        selectorPanel.add(new JLabel("  |  Chart Type: "));
+        JComboBox<String> chartTypeSelector = new JComboBox<>(new String[]{"Bar Chart", "Pie Chart"});
+        chartTypeSelector.setPreferredSize(new Dimension(120, 25));
+        selectorPanel.add(chartTypeSelector);
+        
         // Chart and text area
         ChartPanel chartPanel0 = new ChartPanel(null);
         chartPanel0.setPreferredSize(new Dimension(800, 350));
@@ -148,10 +154,39 @@ public class AdvancedAnalysisPanel extends JPanel {
                         sb.append("\n");
                     });
                     
-                    JFreeChart chart = ChartFactory.createStackedBarChart(
-                        "Satisfaction Analysis - All Categories",
-                        "Relief Category", "Percentage (%)", dataset
-                    );
+                    // Create chart based on selected type
+                    String chartType = (String) chartTypeSelector.getSelectedItem();
+                    JFreeChart chart;
+                    
+                    if ("Pie Chart".equals(chartType)) {
+                        DefaultPieDataset<String> pieDataset = new DefaultPieDataset<>();
+                        
+                        double posSum = 0, negSum = 0, neuSum = 0;
+                        for (Object colObj : dataset.getColumnKeys()) {
+                            Comparable<?> col = (Comparable<?>) colObj;
+                            Number pos = dataset.getValue("Positive", col);
+                            Number neg = dataset.getValue("Negative", col);
+                            Number neu = dataset.getValue("Neutral", col);
+                            if (pos != null) posSum += pos.doubleValue();
+                            if (neg != null) negSum += neg.doubleValue();
+                            if (neu != null) neuSum += neu.doubleValue();
+                        }
+                        
+                        pieDataset.setValue("Positive", posSum);
+                        pieDataset.setValue("Negative", negSum);
+                        pieDataset.setValue("Neutral", neuSum);
+                        
+                        chart = ChartFactory.createPieChart(
+                            "Satisfaction Analysis - All Categories (Pie View)",
+                            pieDataset
+                        );
+                    } else {
+                        // Default: Bar Chart
+                        chart = ChartFactory.createStackedBarChart(
+                            "Satisfaction Analysis - All Categories",
+                            "Relief Category", "Percentage (%)", dataset
+                        );
+                    }
                     chartPanel0.setChart(chart);
                 } else {
                     // Show specific category details
