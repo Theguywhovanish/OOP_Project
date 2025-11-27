@@ -174,4 +174,21 @@ public class Model {
     public DataPersistenceManager getPersistenceManager() {
         return persistenceManager;
     }
+
+    /**
+     * Reset database connection after manual database reset.
+     * CRITICAL: Call this after database files are deleted to force reconnection.
+     */
+    public void resetDatabaseConnection() {
+        System.out.println("DEBUG: Model.resetDatabaseConnection() called");
+        if (dbManager != null) {
+            try {
+                // Call reset() on the existing instance to close connection and reset flags
+                dbManager.reset();
+                System.out.println("DEBUG: Called reset() on existing dbManager");
+            } catch (Exception e) {
+                System.err.println("Error resetting dbManager: " + e.getMessage());
+            }
+        }
+    }
 }
