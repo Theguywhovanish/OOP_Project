@@ -3,6 +3,7 @@ package com.humanitarian.devui.database;
 import com.humanitarian.devui.model.*;
 import java.sql.*;
 import java.util.*;
+import java.io.File;
 
 /**
  * Database manager for storing and retrieving posts and comments.
@@ -21,13 +22,28 @@ public class DatabaseManager {
         String currentDir = System.getProperty("user.dir");
         String basePath;
         
-        // Detect if running from OOP_Project root or from within dev-ui
-        if (currentDir.endsWith("dev-ui")) {
-            basePath = currentDir + "/data";
-        } else {
-            basePath = currentDir + "/dev-ui/data";
+        // Resolve correct base path - navigate to OOP_Project root first
+        File currentFile = new File(currentDir);
+        File projectRoot = currentFile;
+        
+        // Navigate up to find 'OOP_Project' folder
+        while (projectRoot != null && !projectRoot.getName().equals("OOP_Project")) {
+            projectRoot = projectRoot.getParentFile();
         }
         
+        if (projectRoot != null) {
+            // Found OOP_Project root
+            basePath = projectRoot.getAbsolutePath() + "/dev-ui/data";
+        } else {
+            // Fallback: try to detect from current directory
+            if (currentDir.endsWith("dev-ui")) {
+                basePath = currentDir + "/data";
+            } else {
+                basePath = currentDir + "/dev-ui/data";
+            }
+        }
+        
+        // Ensure data directory exists
         java.io.File dir = new java.io.File(basePath);
         if (!dir.exists()) {
             dir.mkdirs();
@@ -111,7 +127,11 @@ public class DatabaseManager {
             pstmt.setString(5, post.getCreatedAt().toString());
             pstmt.setString(6, post.getSentiment() != null ? post.getSentiment().getType().toString() : null);
             pstmt.setDouble(7, post.getSentiment() != null ? post.getSentiment().getConfidence() : 0);
-            pstmt.setString(8, post.getReliefItem() != null ? post.getReliefItem().getCategory().name() : null);
+            String reliefCategory = null;
+            if (post.getReliefItem() != null && post.getReliefItem().getCategory() != null) {
+                reliefCategory = post.getReliefItem().getCategory().name();
+            }
+            pstmt.setString(8, reliefCategory);
             pstmt.setString(9, post.getDisasterKeyword());
             pstmt.executeUpdate();
         }
@@ -153,7 +173,11 @@ public class DatabaseManager {
             pstmt.setString(1, comment.getContent());
             pstmt.setString(2, comment.getSentiment() != null ? comment.getSentiment().getType().toString() : null);
             pstmt.setDouble(3, comment.getSentiment() != null ? comment.getSentiment().getConfidence() : 0);
-            pstmt.setString(4, comment.getReliefItem() != null ? comment.getReliefItem().getCategory().name() : null);
+            String updateReliefCategory = null;
+            if (comment.getReliefItem() != null && comment.getReliefItem().getCategory() != null) {
+                updateReliefCategory = comment.getReliefItem().getCategory().name();
+            }
+            pstmt.setString(4, updateReliefCategory);
             pstmt.setString(5, comment.getCommentId());
             pstmt.executeUpdate();
             commit();
@@ -186,7 +210,11 @@ public class DatabaseManager {
             pstmt.setString(5, comment.getCreatedAt().toString());
             pstmt.setString(6, comment.getSentiment() != null ? comment.getSentiment().getType().toString() : null);
             pstmt.setDouble(7, comment.getSentiment() != null ? comment.getSentiment().getConfidence() : 0);
-            pstmt.setString(8, comment.getReliefItem() != null ? comment.getReliefItem().getCategory().name() : null);
+            String commentReliefCategory = null;
+            if (comment.getReliefItem() != null && comment.getReliefItem().getCategory() != null) {
+                commentReliefCategory = comment.getReliefItem().getCategory().name();
+            }
+            pstmt.setString(8, commentReliefCategory);
             pstmt.executeUpdate();
         }
     }
