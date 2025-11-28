@@ -1,7 +1,7 @@
 package com.humanitarian.devui.ui;
 
 import com.humanitarian.devui.model.*;
-import com.humanitarian.devui.crawler.FacebookCrawler;
+import com.humanitarian.devui.crawler.YouTubeCrawler;
 import com.humanitarian.devui.crawler.MockDataCrawler;
 import com.humanitarian.devui.database.DatabaseManager;
 import javax.swing.*;
@@ -12,8 +12,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Panel for controlling data crawling from Facebook.
- * Allows users to configure crawler settings and fetch data.
+ * Panel for controlling data crawling from multiple platforms (Facebook, YouTube).
+ * Allows users to configure crawler settings and fetch data from selected platform.
  */
 public class CrawlControlPanel extends JPanel {
     private final Model model;
@@ -29,6 +29,8 @@ public class CrawlControlPanel extends JPanel {
     private JButton crawlUrlButton;
     private JComboBox<String> disasterTypeCombo;
     private JButton addNewDisasterButton;
+    private JComboBox<String> platformSelector;
+    private String selectedPlatform = "YOUTUBE";
 
     public CrawlControlPanel(Model model, SessionDataBuffer buffer) {
         this.model = model;
@@ -38,7 +40,12 @@ public class CrawlControlPanel extends JPanel {
 
     private void initializeUI() {
         setLayout(new BorderLayout(10, 10));
-        setBorder(BorderFactory.createTitledBorder("Web Crawler Control - Crawl Facebook Posts"));
+        
+        // Create top panel with platform selector
+        JPanel topPanel = createPlatformSelectorPanel();
+        add(topPanel, BorderLayout.NORTH);
+        
+        setBorder(BorderFactory.createTitledBorder("Web Crawler Control"));
 
         // Left: Configuration panel
         JPanel configPanel = createConfigPanel();
@@ -51,6 +58,40 @@ public class CrawlControlPanel extends JPanel {
         // Bottom: Status and progress
         JPanel bottomPanel = createBottomPanel();
         add(bottomPanel, BorderLayout.SOUTH);
+    }
+
+    private JPanel createPlatformSelectorPanel() {
+        JPanel panel = new JPanel();
+        panel.setLayout(new FlowLayout(FlowLayout.LEFT));
+        panel.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
+        panel.setBackground(new Color(240, 240, 240));
+        
+        JLabel platformLabel = new JLabel("Platform: ");
+        platformLabel.setFont(new Font("Arial", Font.BOLD, 12));
+        panel.add(platformLabel);
+        
+        platformSelector = new JComboBox<>(new String[]{"YOUTUBE"});
+        platformSelector.setFont(new Font("Arial", Font.PLAIN, 12));
+        platformSelector.addActionListener(e -> updateUIForPlatform());
+        platformSelector.setPreferredSize(new Dimension(150, 30));
+        panel.add(platformSelector);
+        
+        return panel;
+    }
+
+    private void updateUIForPlatform() {
+        selectedPlatform = (String) platformSelector.getSelectedItem();
+        setBorder(BorderFactory.createTitledBorder("Web Crawler Control - Crawl Data"));
+        
+        if (crawlButton != null) {
+            crawlButton.setText("Crawl Data");
+        }
+        if (crawlUrlButton != null) {
+            crawlUrlButton.setText("Crawl Videos from URLs");
+        }
+        
+        crawlResultsArea.setText("Ready to crawl YouTube data\n");
+        statusLabel.setText("Platform: YouTube");
     }
 
     private JPanel createConfigPanel() {
@@ -88,7 +129,7 @@ public class CrawlControlPanel extends JPanel {
         panel.add(Box.createVerticalStrut(10));
 
         // Crawl button
-        crawlButton = new JButton("Crawl Facebook Data");
+        crawlButton = new JButton("Crawl Data");
         crawlButton.setFont(new Font("Arial", Font.BOLD, 12));
         crawlButton.setMaximumSize(new Dimension(250, 40));
         crawlButton.addActionListener(e -> startCrawling());
@@ -105,7 +146,7 @@ public class CrawlControlPanel extends JPanel {
         postUrlField = new JTextArea(6, 25);
         postUrlField.setLineWrap(true);
         postUrlField.setWrapStyleWord(true);
-        postUrlField.setText("https://www.facebook.com/");
+        postUrlField.setText("https://www.youtube.com/watch?v=");
         JScrollPane urlScroll = new JScrollPane(postUrlField);
         panel.add(urlScroll);
         panel.add(Box.createVerticalStrut(8));
@@ -197,7 +238,7 @@ public class CrawlControlPanel extends JPanel {
 
     private void startCrawling() {
         new Thread(() -> {
-            FacebookCrawler facebookCrawler = null;
+            Object crawler = null;
             try {
                 crawlButton.setEnabled(false);
                 progressBar.setValue(0);
@@ -218,33 +259,49 @@ public class CrawlControlPanel extends JPanel {
                 statusLabel.setText("⏳ Crawling in progress... (This may take a while)");
                 progressBar.setIndeterminate(true);
 
-                crawlResultsArea.setText("Starting Facebook crawl...\n");
+                crawlResultsArea.setText("Starting YouTube crawl...\n");
+                crawlResultsArea.append("Platform: YouTube\n");
                 crawlResultsArea.append("Post Limit: " + postLimit + "\n");
                 crawlResultsArea.append("Comment Limit per Post: " + commentLimit + "\n");
-                crawlResultsArea.append("Hashtags: " + String.join(", ", hashtags) + "\n");
+                crawlResultsArea.append("Keywords: " + String.join(", ", hashtags) + "\n");
                 crawlResultsArea.append("-".repeat(60) + "\n\n");
 
                 List<Post> posts = new ArrayList<>();
                 boolean usedRealCrawler = false;
                 
-                // Try real Facebook crawler first
+                // Initialize YouTube crawler
                 try {
-                    crawlResultsArea.append("Initializing Facebook Selenium crawler...\n");
-                    crawlResultsArea.append("Checking for ChromeDriver and Chrome browser...\n\n");
-                    
-                    facebookCrawler = new FacebookCrawler();
-                    // Direct login - no need for cookie file
-                    // facebookCrawler.loadCookieFromFile("cookie.txt");
-                    facebookCrawler.initialize();
-                    
-                    if (facebookCrawler.isInitialized()) {
-                        crawlResultsArea.append("✓ Facebook crawler initialized\n");
-                        crawlResultsArea.append("Crawling from Facebook hashtags...\n\n");
-                        posts = facebookCrawler.crawlPosts(new ArrayList<>(List.of(keywords)), hashtags, postLimit);
-                        usedRealCrawler = true;
-                        crawlResultsArea.append("✓ Successfully crawled " + posts.size() + " posts from Facebook\n\n");
+                    if ("YOUTUBE".equals(selectedPlatform)) {
+                        crawlResultsArea.append("Initializing YouTube Selenium crawler...\n");
+                        YouTubeCrawler facebookCrawler = new YouTubeCrawler();
+                        facebookCrawler.initialize();
+                        
+                        if (facebookCrawler.isInitialized()) {
+                            crawlResultsArea.append("✓ Facebook crawler initialized\n");
+                            crawlResultsArea.append("Crawling from Facebook...\n\n");
+                            posts = facebookCrawler.crawlPosts(hashtags, new ArrayList<>(), postLimit);
+                            usedRealCrawler = true;
+                            crawlResultsArea.append("✓ Successfully crawled " + posts.size() + " posts from Facebook\n\n");
+                            crawler = facebookCrawler;
+                        }
                     } else {
-                        throw new Exception("Failed to initialize ChromeDriver - check console for details");
+                        // YouTube
+                        crawlResultsArea.append("Initializing YouTube Selenium crawler...\n");
+                        YouTubeCrawler youtubeCrawler = new YouTubeCrawler();
+                        youtubeCrawler.initialize();
+                        
+                        if (youtubeCrawler.isInitialized()) {
+                            crawlResultsArea.append("✓ YouTube crawler initialized\n");
+                            crawlResultsArea.append("Crawling from YouTube...\n\n");
+                            posts = youtubeCrawler.crawlPosts(hashtags, new ArrayList<>(), postLimit);
+                            usedRealCrawler = true;
+                            crawlResultsArea.append("✓ Successfully crawled " + posts.size() + " videos from YouTube\n\n");
+                            crawler = youtubeCrawler;
+                        }
+                    }
+                    
+                    if (!usedRealCrawler) {
+                        throw new Exception("Failed to initialize crawler");
                     }
                 } catch (IllegalStateException ise) {
                     crawlResultsArea.append("❌ ChromeDriver Not Found\n");
@@ -304,10 +361,10 @@ public class CrawlControlPanel extends JPanel {
                     }
                     
                     // Automatically assign disaster type based on keywords
-                    if (post instanceof FacebookPost) {
-                        FacebookPost fbPost = (FacebookPost) post;
-                        DisasterType disasterType = findDisasterTypeForPost(fbPost, hashtags);
-                        fbPost.setDisasterType(disasterType);
+                    if (post instanceof YouTubePost) {
+                        YouTubePost ytPost = (YouTubePost) post;
+                        DisasterType disasterType = findDisasterTypeForPost(ytPost, hashtags);
+                        ytPost.setDisasterType(disasterType);
                     }
                     buffer.addPost(post);
                     addedCount++;
@@ -333,9 +390,13 @@ public class CrawlControlPanel extends JPanel {
             } finally {
                 crawlButton.setEnabled(true);
                 // Cleanup crawler resources
-                if (facebookCrawler != null) {
+                if (crawler != null) {
                     try {
-                        facebookCrawler.shutdown();
+                        if (crawler instanceof YouTubeCrawler) {
+                            ((YouTubeCrawler) crawler).shutdown();
+                        } else if (crawler instanceof YouTubeCrawler) {
+                            ((YouTubeCrawler) crawler).shutdown();
+                        }
                     } catch (Exception e) {
                         System.err.println("Error shutting down crawler: " + e.getMessage());
                     }
@@ -363,32 +424,37 @@ public class CrawlControlPanel extends JPanel {
                 // Parse multiple URLs from textarea
                 String urlText = postUrlField.getText().trim();
                 
-                if (urlText.isEmpty() || urlText.equals("https://www.facebook.com/")) {
-                    statusLabel.setText("✗ Please enter valid post URL(s)");
-                    crawlResultsArea.setText("Error: URL(s) are empty or invalid\n");
+                if (urlText.isEmpty()) {
+                    statusLabel.setText("✗ Please enter valid URL(s)");
+                    crawlResultsArea.setText("Error: URL(s) are empty\n");
                     return;
                 }
 
                 // Split by newlines and filter empty lines
                 String[] urls = urlText.split("\n");
                 List<String> validUrls = new ArrayList<>();
-                for (String url : urls) {
-                    String cleanUrl = url.trim();
-                    if (!cleanUrl.isEmpty() && cleanUrl.contains("facebook.com")) {
-                        validUrls.add(cleanUrl);
+                
+                if ("YOUTUBE".equals(selectedPlatform)) {
+                    // YouTube URL validation
+                    for (String url : urls) {
+                        String cleanUrl = url.trim();
+                        if (!cleanUrl.isEmpty() && (cleanUrl.contains("youtube.com") || cleanUrl.contains("youtu.be"))) {
+                            validUrls.add(cleanUrl);
+                        }
+                    }
+                    
+                    if (validUrls.isEmpty()) {
+                        statusLabel.setText("✗ No valid YouTube URLs found");
+                        crawlResultsArea.setText("Error: Please enter valid YouTube URLs (youtube.com or youtu.be)\n");
+                        return;
                     }
                 }
 
-                if (validUrls.isEmpty()) {
-                    statusLabel.setText("✗ No valid Facebook URLs found");
-                    crawlResultsArea.setText("Error: Please enter valid facebook.com URLs\n");
-                    return;
-                }
-
-                statusLabel.setText("⏳ Crawling " + validUrls.size() + " post(s) for disaster: " + selectedDisasterName);
+                statusLabel.setText("⏳ Crawling " + validUrls.size() + " URL(s) for disaster: " + selectedDisasterName);
                 progressBar.setIndeterminate(true);
 
                 crawlResultsArea.setText("Starting crawl from user-provided URLs...\n");
+                crawlResultsArea.append("Platform: " + selectedPlatform + "\n");
                 crawlResultsArea.append("Disaster Type: " + selectedDisasterName + "\n");
                 crawlResultsArea.append("Total URLs: " + validUrls.size() + "\n");
                 crawlResultsArea.append("-".repeat(60) + "\n\n");
@@ -404,13 +470,29 @@ public class CrawlControlPanel extends JPanel {
                     crawlResultsArea.append("  " + postUrl.substring(0, Math.min(70, postUrl.length())) + "\n");
                     
                     try {
-                        // Use FacebookCrawler to crawl this URL directly (no login)
-                        FacebookCrawler urlCrawler = new FacebookCrawler();
-                        FacebookPost post = urlCrawler.crawlPostByUrl(postUrl);
+                        Post post = null;
+                        
+                        if ("YOUTUBE".equals(selectedPlatform)) {
+                            // Use YouTubeCrawler for YouTube URLs
+                            YouTubeCrawler youtubeCrawler = new YouTubeCrawler();
+                            youtubeCrawler.initialize();
+                            post = youtubeCrawler.crawlVideoByUrl(postUrl);
+                            youtubeCrawler.shutdown();
+                        } else {
+                            // Use YouTubeCrawler for YouTube URLs
+                            YouTubeCrawler facebookCrawler = new YouTubeCrawler();
+                            facebookCrawler.initialize();
+                            post = facebookCrawler.crawlVideoByUrl(postUrl);
+                            facebookCrawler.shutdown();
+                        }
                         
                         if (post != null) {
                             // Set the disaster type
-                            post.setDisasterType(selectedDisaster);
+                            if (post instanceof YouTubePost) {
+                                ((YouTubePost) post).setDisasterType(selectedDisaster);
+                            } else if (post instanceof YouTubePost) {
+                                ((YouTubePost) post).setDisasterType(selectedDisaster);
+                            }
                             
                             // Check for duplicate before adding to buffer
                             DatabaseManager dbChecker2 = new DatabaseManager();
@@ -454,6 +536,7 @@ public class CrawlControlPanel extends JPanel {
                 // Display summary
                 crawlResultsArea.append("\n" + "=".repeat(60) + "\n");
                 crawlResultsArea.append("📊 CRAWL SUMMARY\n");
+                crawlResultsArea.append("Platform: " + selectedPlatform + "\n");
                 crawlResultsArea.append("Disaster Type: " + selectedDisasterName + "\n");
                 crawlResultsArea.append("Total URLs: " + validUrls.size() + "\n");
                 crawlResultsArea.append("✓ Successful: " + successCount + "\n");
@@ -544,7 +627,7 @@ public class CrawlControlPanel extends JPanel {
 
         results.append("\n=== RELIEF CATEGORIES ===\n");
         var categoryStats = posts.stream()
-            .filter(p -> p.getReliefItem() != null)
+            .filter(p -> p.getReliefItem() != null && p.getReliefItem().getCategory() != null)
             .collect(java.util.stream.Collectors.groupingBy(
                 p -> p.getReliefItem().getCategory(),
                 java.util.stream.Collectors.counting()
@@ -559,11 +642,19 @@ public class CrawlControlPanel extends JPanel {
             Post post = posts.get(i);
             results.append(String.format("\nPost %d: %s\n", i + 1, post.getPostId()));
             results.append(String.format("  Author: %s\n", post.getAuthor()));
-            results.append(String.format("  Category: %s\n", post.getReliefItem().getCategory().getDisplayName()));
+            String category = "N/A";
+            if (post.getReliefItem() != null && post.getReliefItem().getCategory() != null) {
+                category = post.getReliefItem().getCategory().getDisplayName();
+            }
+            results.append(String.format("  Category: %s\n", category));
             results.append(String.format("  Comments: %d\n", post.getComments().size()));
-            results.append(String.format("  Sentiment: %s (%.2f)\n", 
-                post.getSentiment().getType(),
-                post.getSentiment().getConfidence()));
+            String sentiment = "N/A";
+            double confidence = 0;
+            if (post.getSentiment() != null) {
+                sentiment = post.getSentiment().getType().toString();
+                confidence = post.getSentiment().getConfidence();
+            }
+            results.append(String.format("  Sentiment: %s (%.2f)\n", sentiment, confidence));
         }
 
         crawlResultsArea.setText(results.toString());
@@ -667,7 +758,7 @@ public class CrawlControlPanel extends JPanel {
      * Find the appropriate disaster type for a post based on keywords used
      */
     @SuppressWarnings("unused")
-    private DisasterType findDisasterTypeForPost(FacebookPost ignored, List<String> keywords) {
+    private DisasterType findDisasterTypeForPost(YouTubePost ignored, List<String> keywords) {
         DisasterManager manager = DisasterManager.getInstance();
         
         // Try to find a matching disaster type from the keywords
@@ -698,7 +789,7 @@ public class CrawlControlPanel extends JPanel {
                 ReliefItem.Category category = categories[p % categories.length];
                 ReliefItem reliefItem = new ReliefItem(category, "Relief for " + category.getDisplayName(), 3);
 
-                FacebookPost post = new FacebookPost(
+                YouTubePost post = new YouTubePost(
                     "POST_SAMPLE_" + p,
                     "Post about " + topic + " - " + category.getDisplayName() + " assistance needed",
                     java.time.LocalDateTime.now().minusHours(p),
@@ -752,9 +843,21 @@ public class CrawlControlPanel extends JPanel {
 
         if (confirm == JOptionPane.YES_OPTION) {
             try {
-                // Clear model data first using proper method that notifies listeners
-                model.clearPosts();
-                buffer.clear();
+                // CRITICAL: Close ALL active database connections first
+                // This releases locks on the database file so we can delete it
+                System.out.println("DEBUG: Closing all active database connections...");
+                try {
+                    // If Model is holding a DatabaseManager instance, close it
+                    // We do this by calling a method that closes database resources
+                    DatabaseManager tempManager = new DatabaseManager();
+                    tempManager.close();
+                    System.out.println("DEBUG: Closed temporary DatabaseManager");
+                } catch (Exception e) {
+                    System.out.println("DEBUG: No active connections to close: " + e.getMessage());
+                }
+                
+                // Give database time to fully release locks
+                Thread.sleep(300);
                 
                 // Get the correct database path based on working directory
                 String currentDir = System.getProperty("user.dir");
@@ -776,25 +879,38 @@ public class CrawlControlPanel extends JPanel {
                 
                 System.out.println("Resetting database at: " + dbPath);
                 
-                // Delete the old database file and its associated journal files
+                // CRITICAL: Delete ALL database-related files to ensure complete reset
                 if (dbFile.exists()) {
                     boolean deleted = dbFile.delete();
-                    System.out.println("Delete old DB file: " + deleted);
+                    System.out.println("Delete main DB file: " + deleted);
                     if (!deleted) {
                         throw new Exception("Failed to delete old database file at " + dbPath);
                     }
-                    
-                    // Also try to delete journal files if they exist
-                    File journalFile = new File(dbPath + "-journal");
-                    if (journalFile.exists()) {
-                        journalFile.delete();
-                    }
-                    
-                    statusLabel.setText("✓ Old database file deleted");
                 }
                 
-                // Give the filesystem a moment to fully release the file
-                Thread.sleep(100);
+                // Delete ALL WAL (Write-Ahead Log) and journal files
+                File walFile = new File(dbPath + "-wal");
+                if (walFile.exists()) {
+                    walFile.delete();
+                    System.out.println("Deleted WAL file: " + dbPath + "-wal");
+                }
+                
+                File shmFile = new File(dbPath + "-shm");
+                if (shmFile.exists()) {
+                    shmFile.delete();
+                    System.out.println("Deleted SHM file: " + dbPath + "-shm");
+                }
+                
+                File journalFile = new File(dbPath + "-journal");
+                if (journalFile.exists()) {
+                    journalFile.delete();
+                    System.out.println("Deleted journal file: " + dbPath + "-journal");
+                }
+                
+                statusLabel.setText("✓ Old database files deleted");
+                
+                // Give the filesystem a moment to fully release the files
+                Thread.sleep(200);
                 
                 // Create new empty database by initializing schema
                 try {
@@ -806,6 +922,9 @@ public class CrawlControlPanel extends JPanel {
                     try (java.sql.Statement stmt = conn.createStatement()) {
                         
                         System.out.println("Creating new database schema...");
+                        
+                        // Enable foreign keys
+                        stmt.execute("PRAGMA foreign_keys = ON");
                         
                         // Create posts table with new schema (9 columns)
                         stmt.execute("CREATE TABLE IF NOT EXISTS posts (" +
@@ -834,30 +953,40 @@ public class CrawlControlPanel extends JPanel {
                             ")");
                         
                         conn.commit();
-                        
-                        System.out.println("Database schema created successfully");
-                        
-                        statusLabel.setText("✓ Database reset successfully");
-                        crawlResultsArea.setText("Database has been reset.\n");
-                        crawlResultsArea.append("✓ Old database file deleted: " + dbPath + "\n");
-                        crawlResultsArea.append("✓ New empty database created with fresh schema\n");
-                        crawlResultsArea.append("Ready for new data crawl\n");
-                        
-                        JOptionPane.showMessageDialog(
-                            this,
-                            "✓ Database reset successfully!\n\n" +
-                            "Old file: " + dbPath + "\n" +
-                            "Status: Deleted and replaced with new empty database",
-                            "Reset Complete",
-                            JOptionPane.INFORMATION_MESSAGE
-                        );
+                        System.out.println("Database schema committed successfully");
                     }
                     conn.close();
+                    System.out.println("Database connection closed");
                 } catch (Exception dbEx) {
                     System.err.println("Database creation error: " + dbEx.getMessage());
                     dbEx.printStackTrace();
                     throw new Exception("Failed to create new database: " + dbEx.getMessage());
                 }
+                
+                // CRITICAL: Clear Model data AFTER database is recreated to prevent reload of old data
+                model.clearPosts();
+                buffer.clear();
+                
+                // CRITICAL: Reset Model's DatabaseManager instance to force new connection
+                model.resetDatabaseConnection();
+                System.out.println("DEBUG: Model database connection reset");
+                
+                statusLabel.setText("✓ Database reset successfully");
+                crawlResultsArea.setText("Database has been reset.\n");
+                crawlResultsArea.append("✓ Old database file deleted: " + dbPath + "\n");
+                crawlResultsArea.append("✓ WAL/SHM/Journal files cleaned: " + dbPath + "-wal, -shm, -journal\n");
+                crawlResultsArea.append("✓ New empty database created with fresh schema\n");
+                crawlResultsArea.append("Ready for new data crawl\n");
+                
+                JOptionPane.showMessageDialog(
+                    this,
+                    "✓ Database reset successfully!\n\n" +
+                    "Old file: " + dbPath + "\n" +
+                    "Cleaned: -wal, -shm, -journal files\n" +
+                    "Status: Deleted and replaced with new empty database",
+                    "Reset Complete",
+                    JOptionPane.INFORMATION_MESSAGE
+                );
             } catch (Exception ex) {
                 System.err.println("Reset database error: " + ex.getMessage());
                 ex.printStackTrace();

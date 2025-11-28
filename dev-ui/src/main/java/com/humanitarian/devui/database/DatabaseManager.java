@@ -3,12 +3,16 @@ package com.humanitarian.devui.database;
 import com.humanitarian.devui.model.*;
 import java.sql.*;
 import java.util.*;
+import java.io.File;
 
 /**
  * Database manager for storing and retrieving posts and comments.
  * Demonstrates abstraction and encapsulation of database operations.
  */
 public class DatabaseManager {
+    private static DatabaseManager instance;
+    private static final Object lock = new Object();
+    
     private String dbUrl;
     private Connection connection;
     private boolean initialized = false;
@@ -16,18 +20,47 @@ public class DatabaseManager {
     public DatabaseManager() {
         // Lazy initialization - only connect when needed
     }
+    
+    /**
+     * Get singleton instance to avoid multiple connections
+     */
+    public static DatabaseManager getInstance() {
+        if (instance == null) {
+            synchronized (lock) {
+                if (instance == null) {
+                    instance = new DatabaseManager();
+                }
+            }
+        }
+        return instance;
+    }
 
     private String getDbUrl() {
         String currentDir = System.getProperty("user.dir");
         String basePath;
         
-        // Detect if running from OOP_Project root or from within dev-ui
-        if (currentDir.endsWith("dev-ui")) {
-            basePath = currentDir + "/data";
-        } else {
-            basePath = currentDir + "/dev-ui/data";
+        // Resolve correct base path - navigate to OOP_Project root first
+        File currentFile = new File(currentDir);
+        File projectRoot = currentFile;
+        
+        // Navigate up to find 'OOP_Project' folder
+        while (projectRoot != null && !projectRoot.getName().equals("OOP_Project")) {
+            projectRoot = projectRoot.getParentFile();
         }
         
+        if (projectRoot != null) {
+            // Found OOP_Project root
+            basePath = projectRoot.getAbsolutePath() + "/dev-ui/data";
+        } else {
+            // Fallback: try to detect from current directory
+            if (currentDir.endsWith("dev-ui")) {
+                basePath = currentDir + "/data";
+            } else {
+                basePath = currentDir + "/dev-ui/data";
+            }
+        }
+        
+        // Ensure data directory exists
         java.io.File dir = new java.io.File(basePath);
         if (!dir.exists()) {
             dir.mkdirs();
@@ -39,27 +72,34 @@ public class DatabaseManager {
     }
 
     private void ensureConnection() throws ClassNotFoundException, SQLException {
-        if (!initialized) {
-            Class.forName("org.sqlite.JDBC");
-            dbUrl = getDbUrl();
-            
-            // Close any previous connection
-            if (connection != null && !connection.isClosed()) {
-                try {
-                    connection.close();
-                } catch (SQLException e) {
-                    // Ignore
+        synchronized (lock) {
+            if (!initialized) {
+                Class.forName("org.sqlite.JDBC");
+                dbUrl = getDbUrl();
+                
+                // Close any previous connection
+                if (connection != null && !connection.isClosed()) {
+                    try {
+                        connection.close();
+                    } catch (SQLException e) {
+                        // Ignore
+                    }
                 }
+                
+                // Add timeout to database URL to prevent lock issues
+                String urlWithTimeout = dbUrl + "?timeout=30000&journal_mode=WAL";
+                connection = DriverManager.getConnection(urlWithTimeout);
+                
+                // Enable foreign keys and WAL mode
+                try (Statement stmt = connection.createStatement()) {
+                    stmt.execute("PRAGMA foreign_keys = ON");
+                    stmt.execute("PRAGMA journal_mode = WAL");
+                    stmt.execute("PRAGMA busy_timeout = 30000");
+                }
+                createTables();
+                System.out.println("Database initialized: " + dbUrl);
+                initialized = true;
             }
-            
-            connection = DriverManager.getConnection(dbUrl);
-            // Enable foreign keys
-            try (Statement stmt = connection.createStatement()) {
-                stmt.execute("PRAGMA foreign_keys = ON");
-            }
-            createTables();
-            System.out.println("Database initialized: " + dbUrl);
-            initialized = true;
         }
     }
 
@@ -111,7 +151,11 @@ public class DatabaseManager {
             pstmt.setString(5, post.getCreatedAt().toString());
             pstmt.setString(6, post.getSentiment() != null ? post.getSentiment().getType().toString() : null);
             pstmt.setDouble(7, post.getSentiment() != null ? post.getSentiment().getConfidence() : 0);
-            pstmt.setString(8, post.getReliefItem() != null ? post.getReliefItem().getCategory().name() : null);
+            String reliefCategory = null;
+            if (post.getReliefItem() != null && post.getReliefItem().getCategory() != null) {
+                reliefCategory = post.getReliefItem().getCategory().name();
+            }
+            pstmt.setString(8, reliefCategory);
             pstmt.setString(9, post.getDisasterKeyword());
             pstmt.executeUpdate();
         }
@@ -153,7 +197,11 @@ public class DatabaseManager {
             pstmt.setString(1, comment.getContent());
             pstmt.setString(2, comment.getSentiment() != null ? comment.getSentiment().getType().toString() : null);
             pstmt.setDouble(3, comment.getSentiment() != null ? comment.getSentiment().getConfidence() : 0);
-            pstmt.setString(4, comment.getReliefItem() != null ? comment.getReliefItem().getCategory().name() : null);
+            String updateReliefCategory = null;
+            if (comment.getReliefItem() != null && comment.getReliefItem().getCategory() != null) {
+                updateReliefCategory = comment.getReliefItem().getCategory().name();
+            }
+            pstmt.setString(4, updateReliefCategory);
             pstmt.setString(5, comment.getCommentId());
             pstmt.executeUpdate();
             commit();
@@ -186,7 +234,11 @@ public class DatabaseManager {
             pstmt.setString(5, comment.getCreatedAt().toString());
             pstmt.setString(6, comment.getSentiment() != null ? comment.getSentiment().getType().toString() : null);
             pstmt.setDouble(7, comment.getSentiment() != null ? comment.getSentiment().getConfidence() : 0);
-            pstmt.setString(8, comment.getReliefItem() != null ? comment.getReliefItem().getCategory().name() : null);
+            String commentReliefCategory = null;
+            if (comment.getReliefItem() != null && comment.getReliefItem().getCategory() != null) {
+                commentReliefCategory = comment.getReliefItem().getCategory().name();
+            }
+            pstmt.setString(8, commentReliefCategory);
             pstmt.executeUpdate();
         }
     }
@@ -254,7 +306,7 @@ public class DatabaseManager {
 
         java.time.LocalDateTime createdAt = java.time.LocalDateTime.parse(rs.getString("created_at"));
 
-        FacebookPost post = new FacebookPost(postId, content, createdAt, author, "");
+        YouTubePost post = new YouTubePost(postId, content, createdAt, author, "");
 
         String sentimentStr = rs.getString("sentiment");
         if (sentimentStr != null) {
@@ -295,5 +347,35 @@ public class DatabaseManager {
                 System.err.println("Unexpected error during database cleanup: " + e.getMessage());
             }
         }
+    }
+
+    /**
+     * Reset the DatabaseManager to force reconnection.
+     * CRITICAL: Call this after manually deleting database files to clear cached connections.
+     * Without this, the old connection will be reused and SQLite will recover old data.
+     */
+    public void reset() {
+        System.out.println("DEBUG: Resetting DatabaseManager - clearing cached connection");
+        try {
+            // Force close the current connection COMPLETELY
+            if (connection != null) {
+                try {
+                    if (!connection.isClosed()) {
+                        connection.close();
+                    }
+                } catch (SQLException e) {
+                    // Ignore - connection might already be closed
+                }
+                connection = null;
+            }
+            System.out.println("DEBUG: Closed existing connection");
+        } catch (Exception e) {
+            System.err.println("Error closing connection during reset: " + e.getMessage());
+        }
+        
+        // Reset the initialized flag so next call to ensureConnection() will create new connection
+        initialized = false;
+        dbUrl = null;
+        System.out.println("DEBUG: DatabaseManager reset complete - will reconnect on next operation");
     }
 }

@@ -44,14 +44,36 @@ public class DatabaseLoader {
     private static void saveLoadedDataToUserDatabase(Model model) {
         DatabaseManager dbManager = null;
         try {
-            // Get the proper database directory
+            // Always ensure data directory exists and use it
             String currentDir = System.getProperty("user.dir");
             String basePath;
             
-            if (currentDir.endsWith("humanitarian-logistics")) {
-                basePath = currentDir + "/data";
+            // Resolve correct base path - works whether running from root or from subdir
+            File currentFile = new File(currentDir);
+            File projectRoot = currentFile;
+            
+            // Navigate up to find 'humanitarian-logistics' folder
+            while (projectRoot != null && !projectRoot.getName().equals("OOP_Project")) {
+                projectRoot = projectRoot.getParentFile();
+            }
+            
+            if (projectRoot != null) {
+                // Found OOP_Project root
+                basePath = projectRoot.getAbsolutePath() + "/humanitarian-logistics/data";
             } else {
-                basePath = currentDir + "/humanitarian-logistics/data";
+                // Fallback: assume standard structure
+                if (currentDir.endsWith("humanitarian-logistics")) {
+                    basePath = currentDir + "/data";
+                } else {
+                    basePath = currentDir + "/humanitarian-logistics/data";
+                }
+            }
+            
+            // Ensure data directory exists
+            File dataDir = new File(basePath);
+            if (!dataDir.exists()) {
+                dataDir.mkdirs();
+                System.out.println("DEBUG: Created data directory: " + basePath);
             }
             
             // Delete old user database file and connections to reset it
@@ -75,6 +97,7 @@ public class DatabaseLoader {
                 Thread.sleep(200); // Wait for file system to fully release
             }
             
+            System.out.println("DEBUG: Database will be saved to: " + dbFilePath);
             System.out.println("DEBUG: Creating fresh DatabaseManager for user database...");
             // Create new DatabaseManager (will create fresh database)
             dbManager = new DatabaseManager();
@@ -123,7 +146,7 @@ public class DatabaseLoader {
              ResultSet rs = stmt.executeQuery(sql)) {
             
             while (rs.next()) {
-                FacebookPost post = new FacebookPost(
+                YouTubePost post = new YouTubePost(
                     rs.getString("post_id"),
                     rs.getString("content"),
                     LocalDateTime.parse(rs.getString("created_at")),
@@ -131,17 +154,11 @@ public class DatabaseLoader {
                     rs.getString("source")
                 );
                 
-                // Set sentiment if available
-                String sentimentStr = rs.getString("sentiment");
-                if (sentimentStr != null && !sentimentStr.isEmpty()) {
-                    try {
-                        Sentiment.SentimentType sentimentType = Sentiment.SentimentType.valueOf(sentimentStr);
-                        double confidence = rs.getDouble("confidence");
-                        post.setSentiment(new Sentiment(sentimentType, confidence, post.getContent()));
-                    } catch (IllegalArgumentException e) {
-                        // Invalid sentiment type, skip
-                    }
-                }
+                // Don't load sentiment from DB - force re-analysis with Python API
+                // String sentimentStr = rs.getString("sentiment");
+                // if (sentimentStr != null && !sentimentStr.isEmpty()) {
+                //     ...
+                // }
                 
                 // Set relief category if available
                 String categoryStr = rs.getString("relief_category");
@@ -196,17 +213,11 @@ public class DatabaseLoader {
                     // Create comment
                     Comment comment = new Comment(commentId, postId, content, createdAt, author);
                     
-                    // Set sentiment if available
-                    String sentimentStr = rs.getString("sentiment");
-                    if (sentimentStr != null && !sentimentStr.isEmpty()) {
-                        try {
-                            Sentiment.SentimentType sentimentType = Sentiment.SentimentType.valueOf(sentimentStr);
-                            double confidence = rs.getDouble("confidence");
-                            comment.setSentiment(new Sentiment(sentimentType, confidence, content));
-                        } catch (IllegalArgumentException e) {
-                            // Invalid sentiment type, skip
-                        }
-                    }
+                    // Don't load sentiment from DB - force re-analysis with Python API
+                    // String sentimentStr = rs.getString("sentiment");
+                    // if (sentimentStr != null && !sentimentStr.isEmpty()) {
+                    //     ...
+                    // }
                     
                     // Set relief category if available
                     String categoryStr = rs.getString("relief_category");

@@ -3,7 +3,7 @@ package com.humanitarian.logistics.crawler;
 import com.humanitarian.logistics.model.*;
 import com.humanitarian.logistics.sentiment.EnhancedSentimentAnalyzer;
 import com.humanitarian.logistics.sentiment.SentimentAnalyzer;
-import com.humanitarian.logistics.preprocessor.ReliefItemClassifier;
+import com.humanitarian.logistics.sentiment.PythonCategoryClassifier;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -15,20 +15,20 @@ import java.util.*;
  * - Category-specific content for each relief type
  * - Temporal distribution with time-based sentiment evolution
  * - Realistic sentiment patterns per category
- * - Comments with ACTUAL sentiment analysis and category classification
+ * - Comments with ACTUAL sentiment analysis and category classification (ML-based)
  */
 public class MockDataCrawler implements DataCrawler {
     private final boolean initialized;
     private final Random random;
     private final SentimentAnalyzer sentimentAnalyzer;
-    private final ReliefItemClassifier reliefClassifier;
+    private final PythonCategoryClassifier categoryClassifier;
 
     public MockDataCrawler() {
         this.initialized = true;
         this.random = new Random();
         this.sentimentAnalyzer = new EnhancedSentimentAnalyzer();
         this.sentimentAnalyzer.initialize();
-        this.reliefClassifier = new ReliefItemClassifier();
+        this.categoryClassifier = new PythonCategoryClassifier();
     }
 
     @Override
@@ -248,12 +248,12 @@ public class MockDataCrawler implements DataCrawler {
                     random.nextInt(4) + 2
                 );
 
-                FacebookPost post = new FacebookPost(
+                YouTubePost post = new YouTubePost(
                     "POST_MOCK_" + category.name() + "_" + System.currentTimeMillis() + "_" + postIndex,
                     content,
                     postTime,
                     authors[postIndex % authors.length],
-                    "PAGE_" + (postIndex % 3 == 0 ? "OFFICIAL" : "COMMUNITY")
+                    "CHANNEL_" + (postIndex % 3 == 0 ? "OFFICIAL" : "COMMUNITY")
                 );
 
                 // Analyze sentiment instead of using default
@@ -261,7 +261,6 @@ public class MockDataCrawler implements DataCrawler {
                 post.setSentiment(analyzedSentiment);
                 post.setReliefItem(reliefItem);
                 post.setLikes(random.nextInt(800) + 30);
-                post.setShares(random.nextInt(200) + 5);
                 
                 // Set disaster type - randomly assign from available disasters
                 List<String> disasterNames = DisasterManager.getInstance().getAllDisasterNames();
@@ -290,7 +289,7 @@ public class MockDataCrawler implements DataCrawler {
     /**
      * Add realistic comments with actual sentiment analysis and category classification
      */
-    private void addMockComments(FacebookPost post, ReliefItem.Category category, int contentIndex) {
+    private void addMockComments(YouTubePost post, ReliefItem.Category category, int contentIndex) {
         Map<ReliefItem.Category, String[]> commentsByCategory = new HashMap<>();
 
         commentsByCategory.put(ReliefItem.Category.CASH, new String[]{
@@ -353,12 +352,12 @@ public class MockDataCrawler implements DataCrawler {
             Sentiment sentiment = sentimentAnalyzer.analyzeSentiment(commentText);
             comment.setSentiment(sentiment);
             
-            // ✅ CLASSIFY CATEGORY using ReliefItemClassifier
-            ReliefItem.Category classifiedCategory = reliefClassifier.classifyText(commentText);
+            // ✅ CLASSIFY CATEGORY using ML model (facebook/bart-large-mnli)
+            ReliefItem.Category classifiedCategory = categoryClassifier.classifyText(commentText);
             if (classifiedCategory != null) {
-                comment.setReliefItem(new ReliefItem(classifiedCategory, "Auto-classified from comment", 3));
+                comment.setReliefItem(new ReliefItem(classifiedCategory, "ML-classified (facebook/bart-large-mnli)", 3));
             } else {
-                // Fallback to parent post's category if no match found
+                // Fallback to parent post's category if API not available
                 comment.setReliefItem(new ReliefItem(category, "From parent post category", 2));
             }
             
