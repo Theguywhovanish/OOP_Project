@@ -4,6 +4,7 @@ import com.humanitarian.logistics.model.*;
 import com.humanitarian.logistics.crawler.FacebookCrawler;
 import com.humanitarian.logistics.crawler.YouTubeCrawler;
 import com.humanitarian.logistics.crawler.MockDataCrawler;
+import com.humanitarian.logistics.database.DatabaseManager;
 import javax.swing.*;
 import java.awt.*;
 import java.io.File;
@@ -844,24 +845,66 @@ public class CrawlControlPanel extends JPanel {
 
         if (confirm == JOptionPane.YES_OPTION) {
             try {
+                // CRITICAL: Close ALL active database connections first
+                // This releases locks on the database file so we can delete it
+                System.out.println("DEBUG: Closing all active database connections...");
+                try {
+                    // If Model is holding a DatabaseManager instance, close it
+                    DatabaseManager tempManager = new DatabaseManager();
+                    tempManager.close();
+                    System.out.println("DEBUG: Closed temporary DatabaseManager");
+                } catch (Exception e) {
+                    System.out.println("DEBUG: No active connections to close: " + e.getMessage());
+                }
+                
+                // Give database time to fully release locks
+                Thread.sleep(300);
+                
                 // Use relative path so it works on any machine
                 File dbFile = new File("humanitarian_logistics_user.db");
+                String dbPath = dbFile.getAbsolutePath();
                 
-                // Delete the old database file
+                // CRITICAL: Delete ALL database-related files to ensure complete reset
                 if (dbFile.exists()) {
                     if (!dbFile.delete()) {
                         throw new Exception("Failed to delete old database file");
                     }
+                    System.out.println("Deleted main DB file: " + dbPath);
                 }
+                
+                // Delete ALL WAL (Write-Ahead Log) and journal files
+                File walFile = new File(dbPath + "-wal");
+                if (walFile.exists()) {
+                    walFile.delete();
+                    System.out.println("Deleted WAL file: " + dbPath + "-wal");
+                }
+                
+                File shmFile = new File(dbPath + "-shm");
+                if (shmFile.exists()) {
+                    shmFile.delete();
+                    System.out.println("Deleted SHM file: " + dbPath + "-shm");
+                }
+                
+                File journalFile = new File(dbPath + "-journal");
+                if (journalFile.exists()) {
+                    journalFile.delete();
+                    System.out.println("Deleted journal file: " + dbPath + "-journal");
+                }
+                
+                // Give the filesystem a moment to fully release the files
+                Thread.sleep(200);
 
                 // Create new empty database with proper schema
                 try {
                     Class.forName("org.sqlite.JDBC");
                     java.sql.Connection conn = java.sql.DriverManager.getConnection(
-                        "jdbc:sqlite:" + dbFile.getAbsolutePath()
+                        "jdbc:sqlite:" + dbPath
                     );
                     conn.setAutoCommit(false);
                     try (java.sql.Statement stmt = conn.createStatement()) {
+                        
+                        // Enable foreign keys
+                        stmt.execute("PRAGMA foreign_keys = ON");
                         
                         // Create posts table
                         stmt.execute("CREATE TABLE IF NOT EXISTS posts (" +
@@ -887,26 +930,36 @@ public class CrawlControlPanel extends JPanel {
                             ")");
                         
                         conn.commit();
+                        System.out.println("Database schema committed successfully");
                         
                         statusLabel.setText("✓ Database reset successfully");
                         crawlResultsArea.setText("Database has been reset.\n");
-                        crawlResultsArea.append("Old file deleted and new empty database created.\n");
+                        crawlResultsArea.append("✓ Old file deleted: " + dbPath + "\n");
+                        crawlResultsArea.append("✓ WAL/SHM/Journal files cleaned\n");
+                        crawlResultsArea.append("✓ New empty database created with fresh schema\n");
                         
-                        // Clear model data
+                        // Clear model data AFTER database is recreated
                         model.clearPosts();
+                        
+                        // CRITICAL: Reset Model's DatabaseManager instance to force new connection
+                        model.resetDatabaseConnection();
+                        System.out.println("DEBUG: Model database connection reset");
                         
                         JOptionPane.showMessageDialog(
                             this,
-                            "✓ Database reset successfully!\nOld file deleted and new empty database created.",
+                            "✓ Database reset successfully!\n\nOld file deleted and new empty database created.",
                             "Reset Complete",
                             JOptionPane.INFORMATION_MESSAGE
                         );
                     }
                     conn.close();
+                    System.out.println("Database connection closed");
                 } catch (Exception dbEx) {
+                    System.err.println("Database creation error: " + dbEx.getMessage());
                     throw new Exception("Failed to create new database: " + dbEx.getMessage());
                 }
             } catch (Exception ex) {
+                System.err.println("Reset database error: " + ex.getMessage());
                 statusLabel.setText("❌ Error during reset: " + ex.getMessage());
                 JOptionPane.showMessageDialog(
                     this,

@@ -324,4 +324,34 @@ public class DatabaseManager {
             }
         }
     }
+
+    /**
+     * Reset the DatabaseManager to force reconnection.
+     * CRITICAL: Call this after manually deleting database files to clear cached connections.
+     * Without this, the old connection will be reused and SQLite will recover old data.
+     */
+    public void reset() {
+        System.out.println("DEBUG: Resetting DatabaseManager - clearing cached connection");
+        try {
+            // Force close the current connection COMPLETELY
+            if (connection != null) {
+                try {
+                    if (!connection.isClosed()) {
+                        connection.close();
+                    }
+                } catch (SQLException e) {
+                    // Ignore - connection might already be closed
+                }
+                connection = null;
+            }
+            System.out.println("DEBUG: Closed existing connection");
+        } catch (Exception e) {
+            System.err.println("Error closing connection during reset: " + e.getMessage());
+        }
+        
+        // Reset the initialized flag so next call to ensureConnection() will create new connection
+        initialized = false;
+        dbUrl = null;
+        System.out.println("DEBUG: DatabaseManager reset complete - will reconnect on next operation");
+    }
 }

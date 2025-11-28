@@ -858,9 +858,21 @@ public class CrawlControlPanel extends JPanel {
 
         if (confirm == JOptionPane.YES_OPTION) {
             try {
-                // Clear model data first using proper method that notifies listeners
-                model.clearPosts();
-                buffer.clear();
+                // CRITICAL: Close ALL active database connections first
+                // This releases locks on the database file so we can delete it
+                System.out.println("DEBUG: Closing all active database connections...");
+                try {
+                    // If Model is holding a DatabaseManager instance, close it
+                    // We do this by calling a method that closes database resources
+                    DatabaseManager tempManager = new DatabaseManager();
+                    tempManager.close();
+                    System.out.println("DEBUG: Closed temporary DatabaseManager");
+                } catch (Exception e) {
+                    System.out.println("DEBUG: No active connections to close: " + e.getMessage());
+                }
+                
+                // Give database time to fully release locks
+                Thread.sleep(300);
                 
                 // Get the correct database path based on working directory
                 String currentDir = System.getProperty("user.dir");
@@ -882,25 +894,38 @@ public class CrawlControlPanel extends JPanel {
                 
                 System.out.println("Resetting database at: " + dbPath);
                 
-                // Delete the old database file and its associated journal files
+                // CRITICAL: Delete ALL database-related files to ensure complete reset
                 if (dbFile.exists()) {
                     boolean deleted = dbFile.delete();
-                    System.out.println("Delete old DB file: " + deleted);
+                    System.out.println("Delete main DB file: " + deleted);
                     if (!deleted) {
                         throw new Exception("Failed to delete old database file at " + dbPath);
                     }
-                    
-                    // Also try to delete journal files if they exist
-                    File journalFile = new File(dbPath + "-journal");
-                    if (journalFile.exists()) {
-                        journalFile.delete();
-                    }
-                    
-                    statusLabel.setText("✓ Old database file deleted");
                 }
                 
-                // Give the filesystem a moment to fully release the file
-                Thread.sleep(100);
+                // Delete ALL WAL (Write-Ahead Log) and journal files
+                File walFile = new File(dbPath + "-wal");
+                if (walFile.exists()) {
+                    walFile.delete();
+                    System.out.println("Deleted WAL file: " + dbPath + "-wal");
+                }
+                
+                File shmFile = new File(dbPath + "-shm");
+                if (shmFile.exists()) {
+                    shmFile.delete();
+                    System.out.println("Deleted SHM file: " + dbPath + "-shm");
+                }
+                
+                File journalFile = new File(dbPath + "-journal");
+                if (journalFile.exists()) {
+                    journalFile.delete();
+                    System.out.println("Deleted journal file: " + dbPath + "-journal");
+                }
+                
+                statusLabel.setText("✓ Old database files deleted");
+                
+                // Give the filesystem a moment to fully release the files
+                Thread.sleep(200);
                 
                 // Create new empty database by initializing schema
                 try {
@@ -912,6 +937,9 @@ public class CrawlControlPanel extends JPanel {
                     try (java.sql.Statement stmt = conn.createStatement()) {
                         
                         System.out.println("Creating new database schema...");
+                        
+                        // Enable foreign keys
+                        stmt.execute("PRAGMA foreign_keys = ON");
                         
                         // Create posts table with new schema (9 columns)
                         stmt.execute("CREATE TABLE IF NOT EXISTS posts (" +
@@ -940,30 +968,40 @@ public class CrawlControlPanel extends JPanel {
                             ")");
                         
                         conn.commit();
-                        
-                        System.out.println("Database schema created successfully");
-                        
-                        statusLabel.setText("✓ Database reset successfully");
-                        crawlResultsArea.setText("Database has been reset.\n");
-                        crawlResultsArea.append("✓ Old database file deleted: " + dbPath + "\n");
-                        crawlResultsArea.append("✓ New empty database created with fresh schema\n");
-                        crawlResultsArea.append("Ready for new data crawl\n");
-                        
-                        JOptionPane.showMessageDialog(
-                            this,
-                            "✓ Database reset successfully!\n\n" +
-                            "Old file: " + dbPath + "\n" +
-                            "Status: Deleted and replaced with new empty database",
-                            "Reset Complete",
-                            JOptionPane.INFORMATION_MESSAGE
-                        );
+                        System.out.println("Database schema committed successfully");
                     }
                     conn.close();
+                    System.out.println("Database connection closed");
                 } catch (Exception dbEx) {
                     System.err.println("Database creation error: " + dbEx.getMessage());
                     dbEx.printStackTrace();
                     throw new Exception("Failed to create new database: " + dbEx.getMessage());
                 }
+                
+                // CRITICAL: Clear Model data AFTER database is recreated to prevent reload of old data
+                model.clearPosts();
+                buffer.clear();
+                
+                // CRITICAL: Reset Model's DatabaseManager instance to force new connection
+                model.resetDatabaseConnection();
+                System.out.println("DEBUG: Model database connection reset");
+                
+                statusLabel.setText("✓ Database reset successfully");
+                crawlResultsArea.setText("Database has been reset.\n");
+                crawlResultsArea.append("✓ Old database file deleted: " + dbPath + "\n");
+                crawlResultsArea.append("✓ WAL/SHM/Journal files cleaned: " + dbPath + "-wal, -shm, -journal\n");
+                crawlResultsArea.append("✓ New empty database created with fresh schema\n");
+                crawlResultsArea.append("Ready for new data crawl\n");
+                
+                JOptionPane.showMessageDialog(
+                    this,
+                    "✓ Database reset successfully!\n\n" +
+                    "Old file: " + dbPath + "\n" +
+                    "Cleaned: -wal, -shm, -journal files\n" +
+                    "Status: Deleted and replaced with new empty database",
+                    "Reset Complete",
+                    JOptionPane.INFORMATION_MESSAGE
+                );
             } catch (Exception ex) {
                 System.err.println("Reset database error: " + ex.getMessage());
                 ex.printStackTrace();
